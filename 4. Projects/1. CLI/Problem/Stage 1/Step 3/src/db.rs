@@ -10,35 +10,81 @@ pub struct JiraDatabase {
 
 impl JiraDatabase {
     pub fn new(file_path: String) -> Self {
-        todo!()
+        Self {
+            database: Box::new(JSONFileDatabase { file_path })
+        }
     }
 
     pub fn read_db(&self) -> Result<DBState> {
-        todo!()
+        self.database.read_db()
     }
     
     pub fn create_epic(&self, epic: Epic) -> Result<u32> {
-        todo!()
+        let mut dbstate = self.database.read_db()?;
+        dbstate.last_item_id += 1;
+        dbstate.epics.insert(dbstate.last_item_id, epic);
+        self.database.write_db(&dbstate)?;
+        Ok(dbstate.last_item_id)
     }
     
     pub fn create_story(&self, story: Story, epic_id: u32) -> Result<u32> {
-        todo!()
+        let mut dbstate = self.database.read_db()?;
+        dbstate.last_item_id += 1;
+        if !dbstate.epics.contains_key(&epic_id) {return Err(anyhow::anyhow!("key not found in epics dict"))}
+        dbstate.epics.get_mut(&epic_id).unwrap().stories.push(dbstate.last_item_id);
+        dbstate.stories.insert(dbstate.last_item_id, story);
+        self.database.write_db(&dbstate)?;
+        Ok(dbstate.last_item_id)
     }
     
     pub fn delete_epic(&self, epic_id: u32) -> Result<()> {
-        todo!()
+        let mut dbstate = self.database.read_db()?;
+        if dbstate.epics.contains_key(&epic_id) {
+            for story_id in &dbstate.epics.get(&epic_id).unwrap().stories {
+                dbstate.stories.remove(story_id);
+            }
+            dbstate.epics.remove(&epic_id);
+            self.database.write_db(&dbstate)?;
+            return Ok(())
+        }
+        Err(anyhow::anyhow!("epic id not found"))
     }
     
     pub fn delete_story(&self,epic_id: u32, story_id: u32) -> Result<()> {
-        todo!()
+        let mut dbstate = self.database.read_db()?;
+        //delete entry from epic
+        if dbstate.epics.contains_key(&epic_id) {
+            let item = dbstate.epics.get_mut(&epic_id).unwrap();
+            if item.stories.contains(&story_id) {
+                item.stories.retain(|&x| x != story_id);
+                dbstate.stories.remove(&story_id);
+                self.database.write_db(&dbstate)?;
+                return Ok(())
+            }
+        }
+        Err(anyhow::anyhow!("deletion of story failed"))
     }
     
     pub fn update_epic_status(&self, epic_id: u32, status: Status) -> Result<()> {
-        todo!()
+        let mut dbstate = self.database.read_db()?;
+        if dbstate.epics.contains_key(&epic_id) {
+            let item = dbstate.epics.get_mut(&epic_id).unwrap();
+            item.status = status;
+            self.database.write_db(&dbstate)?;
+            return Ok(())
+        }
+        Err(anyhow::anyhow!("Change of status was not possible"))
     }
     
     pub fn update_story_status(&self, story_id: u32, status: Status) -> Result<()> {
-        todo!()
+        let mut dbstate = self.database.read_db()?;
+        if dbstate.stories.contains_key(&story_id) {
+            let item = dbstate.stories.get_mut(&story_id).unwrap();
+            item.status = status;
+            self.database.write_db(&dbstate)?;
+            return Ok(())
+        }
+        Err(anyhow::anyhow!("Change of status was not possible"))
     }
 }
 
@@ -105,7 +151,6 @@ mod tests {
         let db = JiraDatabase { database: Box::new(MockDB::new()) };
         let epic = Epic::new("".to_owned(), "".to_owned());
 
-        // TODO: fix this error by deriving the appropriate traits for Epic
         let result = db.create_epic(epic.clone());
         
         assert_eq!(result.is_ok(), true);
